@@ -1,0 +1,16 @@
+# 忽略虚拟环境目录
+venv37/
+
+# 忽略打包生成的临时文件和目录
+build/
+dist/
+*.spec
+
+# 忽略系统文件
+.DS_Store
+Thumbs.db
+
+# 忽略临时文件
+*.log
+*.tmp
+*.swp 
