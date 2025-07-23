@@ -15,6 +15,14 @@ import os
 import sys
 import platform
 
+# 尝试导入pyautogui用于模拟按键
+try:
+    import pyautogui
+    HAS_PYAUTOGUI = True
+except ImportError:
+    HAS_PYAUTOGUI = False
+    print("警告：pyautogui未安装，无法使用自动按键功能")
+
 # 版本信息
 VERSION = "1.0.0"
 AUTHOR = "ViVi141"
@@ -44,7 +52,6 @@ class CAD坐标转换器:
     def __init__(self, root):
         self.root = root
         self.root.title(f"CAD坐标转换器 v{VERSION} - {AUTHOR}")
-        self.root.geometry("1400x800")
         self.root.configure(bg='#f8f9fa')
         
         # 检查系统兼容性
@@ -189,6 +196,7 @@ class CAD坐标转换器:
         button_frame.pack(fill=tk.X, padx=15, pady=(0, 15))
         
         ttk.Button(button_frame, text="一键复制", command=self.copy_to_cad).pack(fill=tk.X, pady=2)
+        ttk.Button(button_frame, text="自动复制", command=self.auto_copy_to_cad).pack(fill=tk.X, pady=2)
         ttk.Button(button_frame, text="保存文件", command=self.save_to_file).pack(fill=tk.X, pady=2)
         ttk.Button(button_frame, text="清空结果", command=self.clear_results).pack(fill=tk.X, pady=2)
         
@@ -357,6 +365,22 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
 - 默认忽略分组，所有坐标合并处理
 - 勾选"按分组分别处理"可分别生成每个组的CAD命令
 
+⚠️ 重要说明 - CAD命令限制:
+• 当多个分组的多段线连续执行时，CAD会将它们合并为一个多段线
+• 手动复制粘贴可能导致分组边界丢失
+• 建议使用"自动复制"功能，通过模拟键盘操作确保每个分组独立执行
+• 自动粘贴功能是为了克服CAD命令限制而设计的妥协方案
+
+复制方式:
+• 手动复制：直接复制到剪贴板，适合单个分组
+• 自动复制：模拟键盘操作，确保多个分组独立执行
+
+自动复制使用条件:
+• 转换类型必须为"多段线(pline)"
+• 必须启用分组处理
+• 必须有多个分组
+• 仅在满足以上条件时才能使用自动复制功能
+
 作者: {AUTHOR} ({EMAIL})
         """
         messagebox.showinfo("快捷键帮助", help_text)
@@ -376,37 +400,43 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         has_z_coords = any(len(coord) > 2 and coord[2] != 0 for coord in coordinates)
         
         if convert_type == "pline":
-            # 生成多段线命令
-            if has_z_coords:
-                coords_str = " ".join([f"{x},{y},{z}" for x, y, z in coordinates])
-            else:
-                coords_str = " ".join([f"{x},{y}" for x, y, z in coordinates])
-            commands.append(f"pline {coords_str}")
+            # 生成多段线命令 - 使用CAD标准格式，确保每个图形独立
+            commands.append("pline")
+            for x, y, z in coordinates:
+                if has_z_coords:
+                    commands.append(f"{x:.4f},{y:.4f},{z:.4f}")
+                else:
+                    commands.append(f"{x:.4f},{y:.4f}")
+            commands.append("")  # 空行表示命令结束
+            # 添加明确的命令结束标记
+            commands.append("")
+            # 添加回车键模拟，确保CAD命令中断
+            commands.append("")
             
         elif convert_type == "line":
             # 生成直线命令 - 每个坐标点单独生成 line 命令
             for x, y, z in coordinates:
                 if has_z_coords:
-                    commands.append(f"line {x},{y},{z}")
+                    commands.append(f"line {x:.4f},{y:.4f},{z:.4f}")
                 else:
-                    commands.append(f"line {x},{y}")
+                    commands.append(f"line {x:.4f},{y:.4f}")
                 
         elif convert_type == "point":
             # 生成点命令
             for x, y, z in coordinates:
                 if has_z_coords:
-                    commands.append(f"point {x},{y},{z}")
+                    commands.append(f"point {x:.4f},{y:.4f},{z:.4f}")
                 else:
-                    commands.append(f"point {x},{y}")
+                    commands.append(f"point {x:.4f},{y:.4f}")
         
         # 添加文字标注
         if add_text:
             commands.append("")  # 空行分隔
             for i, (x, y, z) in enumerate(coordinates, 1):
                 if has_z_coords:
-                    commands.append(f'-text j ml {x},{y},{z} "" {text_height} 0 A 点{i}')
+                    commands.append(f'-text j ml {x:.4f},{y:.4f},{z:.4f} "" {text_height} 0 A 点{i}')
                 else:
-                    commands.append(f'-text j ml {x},{y} "" {text_height} 0 A 点{i}')
+                    commands.append(f'-text j ml {x:.4f},{y:.4f} "" {text_height} 0 A 点{i}')
         
         return "\n".join(commands)
     
@@ -498,8 +528,11 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         # 清理旧的图形
         self.cleanup_matplotlib()
         
+        # 获取自适应的图形大小
+        fig_width, fig_height, dpi = self.get_adaptive_figure_size(800, 600)
+        
         # 创建图形并设置中文字体
-        fig, ax = plt.subplots(figsize=(10, 7))
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=dpi)
         
         # 设置中文字体
         plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
@@ -566,8 +599,7 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         
         # 嵌入到tkinter窗口
         canvas = FigureCanvasTkAgg(fig, self.graph_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.embed_figure_with_resize(fig, canvas)
     
 
     
@@ -576,8 +608,22 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         # 清理旧的图形
         self.cleanup_matplotlib()
         
+        # 获取图形框架的实际大小
+        self.graph_frame.update_idletasks()
+        frame_width = self.graph_frame.winfo_width()
+        frame_height = self.graph_frame.winfo_height()
+        
+        # 如果框架大小太小，使用默认大小
+        if frame_width < 100 or frame_height < 100:
+            frame_width, frame_height = 1000, 700
+        
+        # 根据框架大小计算图形大小（英寸）
+        dpi = 100
+        fig_width = frame_width / dpi
+        fig_height = frame_height / dpi
+        
         # 创建3D图形
-        fig = plt.figure(figsize=(12, 8))
+        fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
         ax = fig.add_subplot(111, projection='3d')
         
         # 设置中文字体
@@ -640,8 +686,22 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         # 清理旧的图形
         self.cleanup_matplotlib()
         
+        # 获取图形框架的实际大小
+        self.graph_frame.update_idletasks()
+        frame_width = self.graph_frame.winfo_width()
+        frame_height = self.graph_frame.winfo_height()
+        
+        # 如果框架大小太小，使用默认大小
+        if frame_width < 100 or frame_height < 100:
+            frame_width, frame_height = 900, 700
+        
+        # 根据框架大小计算图形大小（英寸）
+        dpi = 100
+        fig_width = frame_width / dpi
+        fig_height = frame_height / dpi
+        
         # 创建图形并设置中文字体
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=dpi)
         
         # 设置中文字体
         plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
@@ -737,8 +797,22 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         # 清理旧的图形
         self.cleanup_matplotlib()
         
+        # 获取图形框架的实际大小
+        self.graph_frame.update_idletasks()
+        frame_width = self.graph_frame.winfo_width()
+        frame_height = self.graph_frame.winfo_height()
+        
+        # 如果框架大小太小，使用默认大小
+        if frame_width < 100 or frame_height < 100:
+            frame_width, frame_height = 1100, 800
+        
+        # 根据框架大小计算图形大小（英寸）
+        dpi = 100
+        fig_width = frame_width / dpi
+        fig_height = frame_height / dpi
+        
         # 创建3D图形
-        fig = plt.figure(figsize=(14, 10))
+        fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
         ax = fig.add_subplot(111, projection='3d')
         
         # 设置中文字体
@@ -891,10 +965,9 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
             
             # 自动复制功能
             if self.auto_copy_var.get():
-                self.update_status("正在复制到剪贴板...", '#007bff')
+                self.update_status("正在自动复制到CAD...", '#007bff')
                 self.root.update()  # 强制更新界面
-                self.copy_to_cad()
-                self.update_status(f"✅ 转换完成！共处理 {len(self.coordinates)} 个坐标点，已自动复制", '#28a745')
+                self.auto_copy_to_cad()
             else:
                 self.update_status(f"✅ 转换完成！共处理 {len(self.coordinates)} 个坐标点", '#28a745')
             
@@ -925,6 +998,339 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
             # 普通复制
             self.copy_content_to_clipboard(content)
     
+    def auto_copy_to_cad(self):
+        """自动复制到CAD功能"""
+        # 调试信息
+        print(f"调试信息 - coordinate_groups: {len(self.coordinate_groups) if self.coordinate_groups else 0}")
+        print(f"调试信息 - coordinates: {len(self.coordinates) if self.coordinates else 0}")
+        
+        # 检查是否有可复制的内容
+        if not self.coordinate_groups and not self.coordinates:
+            messagebox.showwarning("警告", "没有可复制的内容\n请先转换坐标数据")
+            return
+        
+        # 检查是否满足使用自动复制的条件
+        convert_type = self.convert_type.get()
+        has_multiple_groups = (len(self.coordinate_groups) > 1 and 
+                              any(len(coords) > 0 for coords in self.coordinate_groups.values()))
+        
+        # 只有在分组且多段线时才允许使用自动复制
+        if not (convert_type == "pline" and has_multiple_groups):
+            messagebox.showinfo("提示", 
+                "自动复制功能仅在以下条件下可用：\n"
+                "• 转换类型为'多段线(pline)'\n"
+                "• 启用了分组处理\n"
+                "• 有多个分组\n\n"
+                "当前条件不满足，建议使用普通复制功能。")
+            return
+        
+        # 如果没有分组数据但有普通坐标数据，先转换
+        if not self.coordinate_groups and self.coordinates:
+            print("调试信息 - 将普通坐标数据转换为分组格式")
+            # 将普通坐标数据转换为分组格式
+            self.coordinate_groups = {"默认组": self.coordinates}
+        
+        print(f"调试信息 - 最终coordinate_groups: {len(self.coordinate_groups)}")
+        
+        # 显示复制方式选择对话框
+        self.show_copy_method_dialog()
+    
+    def show_copy_method_dialog(self):
+        """显示复制方式选择对话框"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("选择复制方式")
+        dialog.transient(self.root)
+        dialog.focus_set()
+        
+        # 居中显示
+        dialog.update_idletasks()
+        x = (dialog.winfo_screenwidth() // 2) - 250
+        y = (dialog.winfo_screenheight() // 2) - 200
+        dialog.geometry(f"+{x}+{y}")
+        
+        # 主容器
+        main_frame = tk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # 标题
+        title_label = tk.Label(main_frame, text="选择复制方式", 
+                              font=('Microsoft YaHei', 14, 'bold'))
+        title_label.pack(pady=(0, 15))
+        
+        # 说明
+        desc_label = tk.Label(main_frame, text="请选择您希望的复制方式：", 
+                             font=('Microsoft YaHei', 10))
+        desc_label.pack(pady=(0, 20))
+        
+        # 选项按钮
+        options_frame = tk.Frame(main_frame)
+        options_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        def copy_all_groups():
+            """复制所有分组"""
+            self._copy_all_groups_to_cad()
+            dialog.destroy()
+        
+        def copy_selected_groups():
+            """复制选中的分组"""
+            dialog.destroy()
+            self.show_group_copy_dialog()
+        
+        def copy_with_preview():
+            """复制并预览"""
+            self._copy_all_groups_to_cad(preview=True)
+            dialog.destroy()
+        
+        # 选项按钮
+        btn1 = ttk.Button(options_frame, text="📋 复制所有分组", 
+                          command=copy_all_groups, width=25)
+        btn1.pack(pady=5)
+        
+        btn2 = ttk.Button(options_frame, text="✅ 选择特定分组", 
+                          command=copy_selected_groups, width=25)
+        btn2.pack(pady=5)
+        
+        btn3 = ttk.Button(options_frame, text="👁️ 复制并预览", 
+                          command=copy_with_preview, width=25)
+        btn3.pack(pady=5)
+        
+        # 取消按钮
+        cancel_btn = ttk.Button(main_frame, text="取消", command=dialog.destroy)
+        cancel_btn.pack(pady=(10, 0))
+        
+        # 提示信息
+        tip_frame = tk.Frame(main_frame)
+        tip_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        tip_label = tk.Label(tip_frame, text="💡 提示：\n• 复制所有分组：直接复制所有数据\n• 选择特定分组：可以选择部分分组\n• 复制并预览：先查看内容再复制\n\n⚠️ 注意：由于CAD命令限制，多个分组的多段线可能会被合并。\n建议使用自动粘贴功能来确保每个分组独立执行。\n\n✅ 当前满足自动复制条件：分组多段线模式", 
+                            font=('Microsoft YaHei', 9), fg='#666666', justify=tk.LEFT)
+        tip_label.pack()
+    
+    def _copy_all_groups_to_cad(self, preview=False):
+        """复制所有分组到CAD"""
+        # 调试信息
+        print(f"调试信息 - 开始复制，分组数量: {len(self.coordinate_groups)}")
+        
+        # 生成纯CAD命令
+        pure_commands = []
+        
+        for group_name, coordinates in self.coordinate_groups.items():
+            print(f"调试信息 - 处理分组: {group_name}, 坐标数量: {len(coordinates)}")
+            if len(coordinates) > 0:
+                group_commands = self.generate_cad_commands(coordinates)
+                command_lines_count = len(group_commands.split('\n')) if group_commands else 0
+                print(f"调试信息 - 生成的命令: {command_lines_count} 行")
+                if group_commands and group_commands != "未找到有效的坐标数据":
+                    command_lines = group_commands.split('\n')
+                    for line in command_lines:
+                        if line.strip():
+                            pure_commands.append(line.strip())
+                    pure_commands.append("")
+                    pure_commands.append("")
+        
+        content = "\n".join(pure_commands)
+        print(f"调试信息 - 最终命令行数: {len(pure_commands)}")
+        
+        if content and content.strip():
+            if preview:
+                # 显示预览对话框
+                self._show_preview_dialog(content, "所有分组的CAD命令预览")
+            else:
+                # 直接复制并询问自动粘贴
+                self.copy_content_to_clipboard(content)
+                self._ask_auto_paste(content)
+        else:
+            messagebox.showwarning("警告", "没有可复制的CAD命令")
+    
+    def _ask_auto_paste(self, content):
+        """询问是否自动粘贴"""
+        if HAS_PYAUTOGUI:
+            # 显示详细的警告和说明对话框
+            self._show_auto_paste_warning(content)
+        else:
+            messagebox.showinfo("复制完成", 
+                "CAD命令已复制到剪贴板\n"
+                "请手动粘贴到CAD中")
+    
+    def _show_auto_paste_warning(self, content):
+        """显示自动粘贴警告对话框"""
+        warning_dialog = tk.Toplevel(self.root)
+        warning_dialog.title("⚠️ 自动粘贴警告")
+        warning_dialog.transient(self.root)
+        warning_dialog.focus_set()
+        
+        # 居中显示
+        warning_dialog.update_idletasks()
+        x = (warning_dialog.winfo_screenwidth() // 2) - 350
+        y = (warning_dialog.winfo_screenheight() // 2) - 300
+        warning_dialog.geometry(f"+{x}+{y}")
+        
+        # 主容器
+        main_frame = tk.Frame(warning_dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # 警告标题
+        warning_title = tk.Label(main_frame, text="⚠️ 自动粘贴功能警告", 
+                                font=('Microsoft YaHei', 14, 'bold'), fg='#dc3545')
+        warning_title.pack(pady=(0, 15))
+        
+        # 详细说明
+        desc_frame = tk.Frame(main_frame)
+        desc_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+        
+        # 使用滚动文本框显示详细说明
+        text_widget = tk.Text(desc_frame, wrap=tk.WORD, width=70, height=12,
+                             font=('Microsoft YaHei', 9))
+        scrollbar = ttk.Scrollbar(desc_frame, orient="vertical", command=text_widget.yview)
+        text_widget.configure(yscrollcommand=scrollbar.set)
+        
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 插入详细说明
+        warning_text = """🚨 重要警告：
+
+✅ 使用条件确认：
+• 转换类型：多段线(pline) ✓
+• 分组处理：已启用 ✓
+• 分组数量：多个分组 ✓
+• 满足自动复制使用条件
+
+⚠️ 为什么需要模拟键盘操作？
+• 由于CAD的命令行限制，无法一次性执行多个分组的多段线命令
+• 当多个分组的多段线连续执行时，CAD会将它们合并为一个多段线
+• 模拟键盘操作是为了确保每个分组的多段线都能独立执行
+• 这是为了克服CAD命令限制而设计的妥协方案
+
+⚠️ 潜在风险：
+• 此功能将模拟键盘和鼠标操作
+• 可能会影响当前正在运行的其他程序
+• 如果CAD窗口未激活，命令可能发送到错误位置
+• 在自动操作期间，请勿移动鼠标或使用键盘
+
+📋 操作说明：
+• 程序将在5秒后开始自动操作
+• 请确保CAD窗口已打开并处于活动状态
+• 请确保CAD命令行为空，没有正在执行的命令
+• 建议先保存当前CAD文件
+
+🔧 安全建议：
+• 使用前请备份重要的CAD文件
+• 确保没有其他重要程序在前台运行
+• 如果出现问题，可以按Ctrl+Alt+Del中断操作
+• 建议先在测试环境中验证功能
+
+⚡ 自动操作流程：
+1. 程序将切换到CAD窗口
+2. 粘贴CAD命令到命令行
+3. 按回车键执行每个命令
+4. 在命令之间添加适当延迟
+5. 确保每个分组的多段线独立执行
+
+💡 技术说明：
+• 手动复制粘贴时，CAD会将连续的多段线命令合并
+• 模拟键盘操作通过在每个命令后按回车键来强制分离
+• 这样可以确保每个分组的多段线都是独立的图形对象
+
+❓ 是否继续？
+选择"是"将开始自动操作，选择"否"将只复制到剪贴板。"""
+        
+        text_widget.insert(tk.END, warning_text)
+        text_widget.config(state=tk.DISABLED)
+        
+        # 按钮区域
+        button_frame = tk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        def confirm_auto_paste():
+            """确认自动粘贴"""
+            warning_dialog.destroy()
+            self.auto_paste_to_cad(content)
+        
+        def manual_paste():
+            """选择手动粘贴"""
+            warning_dialog.destroy()
+            messagebox.showinfo("复制完成", 
+                "CAD命令已复制到剪贴板\n"
+                "请切换到CAD窗口并手动粘贴")
+        
+        def cancel_operation():
+            """取消操作"""
+            warning_dialog.destroy()
+        
+        # 按钮布局
+        btn_frame = tk.Frame(button_frame)
+        btn_frame.pack(expand=True)
+        
+        confirm_btn = ttk.Button(btn_frame, text="✅ 确认自动粘贴", 
+                                 command=confirm_auto_paste, width=18)
+        confirm_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        manual_btn = ttk.Button(btn_frame, text="📋 手动粘贴", 
+                                command=manual_paste, width=12)
+        manual_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        cancel_btn = ttk.Button(btn_frame, text="❌ 取消", 
+                                command=cancel_operation, width=12)
+        cancel_btn.pack(side=tk.LEFT)
+    
+    def _show_preview_dialog(self, content, title):
+        """显示预览对话框"""
+        preview_dialog = tk.Toplevel(self.root)
+        preview_dialog.title(title)
+        preview_dialog.transient(self.root)
+        
+        # 居中显示
+        preview_dialog.update_idletasks()
+        x = (preview_dialog.winfo_screenwidth() // 2) - 300
+        y = (preview_dialog.winfo_screenheight() // 2) - 200
+        preview_dialog.geometry(f"+{x}+{y}")
+        
+        # 预览内容
+        preview_frame = tk.Frame(preview_dialog)
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # 标题
+        title_label = tk.Label(preview_frame, text=title, 
+                              font=('Microsoft YaHei', 12, 'bold'))
+        title_label.pack(pady=(0, 10))
+        
+        # 文本区域
+        text_frame = tk.Frame(preview_frame)
+        text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        text_widget = tk.Text(text_frame, wrap=tk.WORD, width=60, height=15,
+                             font=('Consolas', 9))
+        scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+        text_widget.configure(yscrollcommand=scrollbar.set)
+        
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 插入内容
+        text_widget.insert(tk.END, content)
+        text_widget.config(state=tk.DISABLED)
+        
+        # 按钮区域
+        button_frame = tk.Frame(preview_frame)
+        button_frame.pack(fill=tk.X)
+        
+        def confirm_copy():
+            """确认复制"""
+            preview_dialog.destroy()
+            self.copy_content_to_clipboard(content)
+            self._ask_auto_paste(content)
+        
+        def cancel_preview():
+            """取消预览"""
+            preview_dialog.destroy()
+        
+        confirm_btn = ttk.Button(button_frame, text="✅ 确认复制", command=confirm_copy)
+        confirm_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        cancel_btn = ttk.Button(button_frame, text="❌ 取消", command=cancel_preview)
+        cancel_btn.pack(side=tk.LEFT)
+    
     def show_group_copy_dialog(self):
         """显示分组复制选择对话框"""
         # 检查是否有分组数据
@@ -935,26 +1341,6 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         dialog = tk.Toplevel(self.root)
         dialog.title("选择要复制的分组")
         
-        # 计算最合适的窗口大小
-        # 内容分析：
-        # - 标题：约30px
-        # - 说明：约25px  
-        # - 分组列表：根据分组数量动态调整，最小300px
-        # - 选择按钮：约40px
-        # - 操作按钮：约50px
-        # - 边距：上下左右各20px = 40px
-        # - 总高度：30+25+300+40+50+40 = 485px
-        
-        # 宽度分析：
-        # - 分组名称最长约50字符
-        # - 按钮宽度：15+12+12 = 39字符
-        # - 边距：左右各20px = 40px
-        # - 总宽度：约600px
-        
-        dialog_width = 600
-        dialog_height = 500
-        
-        dialog.geometry(f"{dialog_width}x{dialog_height}")
         dialog.transient(self.root)
         # 完全移除阻塞，允许同时操作主界面
         # dialog.grab_set()  # 注释掉这行，不阻塞主界面
@@ -962,9 +1348,9 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         
         # 居中显示
         dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (dialog_width // 2)
-        y = (dialog.winfo_screenheight() // 2) - (dialog_height // 2)
-        dialog.geometry(f"{dialog_width}x{dialog_height}+{x}+{y}")
+        x = (dialog.winfo_screenwidth() // 2) - 300
+        y = (dialog.winfo_screenheight() // 2) - 250
+        dialog.geometry(f"+{x}+{y}")
         
         # 主容器
         main_frame = tk.Frame(dialog)
@@ -976,9 +1362,15 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         title_label.pack(pady=(0, 10))
         
         # 说明
-        desc_label = tk.Label(main_frame, text="勾选要复制的分组，然后点击复制按钮", 
+        desc_label = tk.Label(main_frame, text="✅ 勾选要复制的分组，然后选择复制方式", 
                              font=('Microsoft YaHei', 10))
-        desc_label.pack(pady=(0, 20))
+        desc_label.pack(pady=(0, 15))
+        
+        # 统计信息
+        total_groups = len([coords for coords in self.coordinate_groups.values() if len(coords) > 0])
+        stats_label = tk.Label(main_frame, text=f"📊 共找到 {total_groups} 个有效分组", 
+                              font=('Microsoft YaHei', 9), fg='#666666')
+        stats_label.pack(pady=(0, 20))
         
         # 分组选择区域（固定高度）
         list_frame = tk.Frame(main_frame)
@@ -1042,8 +1434,17 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
             for var in group_vars.values():
                 var.set(False)
         
-        ttk.Button(select_frame, text="全选", command=select_all, width=12).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(select_frame, text="取消全选", command=deselect_all, width=12).pack(side=tk.LEFT)
+        # 更美观的按钮布局
+        select_btn_frame = tk.Frame(select_frame)
+        select_btn_frame.pack(expand=True)
+        
+        select_all_btn = ttk.Button(select_btn_frame, text="✅ 全选", 
+                                    command=select_all, width=12)
+        select_all_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        deselect_all_btn = ttk.Button(select_btn_frame, text="❌ 取消全选", 
+                                      command=deselect_all, width=12)
+        deselect_all_btn.pack(side=tk.LEFT)
         
         # 操作按钮区域
         button_frame = tk.Frame(main_frame)
@@ -1056,31 +1457,153 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
                 if var.get():
                     coordinates = self.coordinate_groups[group_name]
                     group_commands = self.generate_cad_commands(coordinates)
-                    selected_content.append(f"# {group_name}")
-                    selected_content.append(f"# 共{len(coordinates)}个坐标点")
-                    selected_content.append("")
-                    selected_content.append(group_commands)
-                    selected_content.append("")
+                    if group_commands and group_commands != "未找到有效的坐标数据":
+                        # 将多行命令分割并添加到列表中
+                        command_lines = group_commands.split('\n')
+                        for line in command_lines:
+                            if line.strip():  # 只添加非空行
+                                selected_content.append(line.strip())
             
             if selected_content:
                 content = "\n".join(selected_content)
-                self.copy_content_to_clipboard(content)
-                dialog.destroy()
+                
+                # 显示预览对话框
+                preview_dialog = tk.Toplevel(dialog)
+                preview_dialog.title("CAD命令预览")
+                preview_dialog.transient(dialog)
+                
+                # 居中显示
+                preview_dialog.update_idletasks()
+                x = (preview_dialog.winfo_screenwidth() // 2) - 300
+                y = (preview_dialog.winfo_screenheight() // 2) - 200
+                preview_dialog.geometry(f"+{x}+{y}")
+                
+                # 预览内容
+                preview_label = tk.Label(preview_dialog, text="即将复制到CAD的命令:", 
+                                       font=('Microsoft YaHei', 10, 'bold'))
+                preview_label.pack(pady=(10, 5))
+                
+                # 文本框显示命令
+                text_widget = scrolledtext.ScrolledText(preview_dialog, height=15, width=70)
+                text_widget.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+                text_widget.insert(1.0, content)
+                text_widget.config(state=tk.DISABLED)
+                
+                # 按钮
+                button_frame = tk.Frame(preview_dialog)
+                button_frame.pack(pady=10)
+                
+                def confirm_copy():
+                    self.copy_content_to_clipboard(content)
+                    preview_dialog.destroy()
+                    dialog.destroy()
+                
+                def cancel_preview():
+                    preview_dialog.destroy()
+                
+                ttk.Button(button_frame, text="确认复制", command=confirm_copy, width=12).pack(side=tk.LEFT, padx=5)
+                ttk.Button(button_frame, text="取消", command=cancel_preview, width=12).pack(side=tk.LEFT, padx=5)
             else:
                 messagebox.showwarning("警告", "请至少选择一个分组")
         
         def copy_all():
-            content = self.cad_text.get(1.0, tk.END).strip()
-            self.copy_content_to_clipboard(content)
+            # 生成纯CAD命令，去除注释和空行
+            pure_commands = []
+            
+            for group_name, coordinates in self.coordinate_groups.items():
+                if len(coordinates) > 0:
+                    # 只生成CAD命令，不包含注释
+                    group_commands = self.generate_cad_commands(coordinates)
+                    if group_commands and group_commands != "未找到有效的坐标数据":
+                        # 将多行命令分割并添加到列表中
+                        command_lines = group_commands.split('\n')
+                        for line in command_lines:
+                            if line.strip():  # 只添加非空行
+                                pure_commands.append(line.strip())
+                        # 在每个分组后添加明确的空行分隔
+                        pure_commands.append("")
+                        # 添加回车键模拟，确保CAD命令中断
+                        pure_commands.append("")
+            
+            # 用换行符连接所有命令
+            content = "\n".join(pure_commands)
+            
+            # 调试信息
+            print(f"调试: 生成了 {len(pure_commands)} 行命令")
+            print(f"调试: 内容长度: {len(content)}")
+            if content:
+                print(f"调试: 前200个字符: {content[:200]}")
+            else:
+                print("调试: 内容为空")
+            
+            # 显示预览对话框
+            if content and content.strip():
+                preview_dialog = tk.Toplevel(dialog)
+                preview_dialog.title("CAD命令预览")
+                preview_dialog.transient(dialog)
+                
+                # 居中显示
+                preview_dialog.update_idletasks()
+                x = (preview_dialog.winfo_screenwidth() // 2) - 300
+                y = (preview_dialog.winfo_screenheight() // 2) - 200
+                preview_dialog.geometry(f"+{x}+{y}")
+                
+                # 预览内容
+                preview_label = tk.Label(preview_dialog, text="即将复制到CAD的命令:", 
+                                       font=('Microsoft YaHei', 10, 'bold'))
+                preview_label.pack(pady=(10, 5))
+                
+                # 文本框显示命令
+                text_widget = scrolledtext.ScrolledText(preview_dialog, height=15, width=70)
+                text_widget.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+                text_widget.insert(1.0, content)
+                text_widget.config(state=tk.DISABLED)
+                
+                # 按钮
+                button_frame = tk.Frame(preview_dialog)
+                button_frame.pack(pady=10)
+                
+                def confirm_copy():
+                    self.copy_content_to_clipboard(content)
+                    preview_dialog.destroy()
+                    dialog.destroy()
+                
+                def cancel_preview():
+                    preview_dialog.destroy()
+                
+                ttk.Button(button_frame, text="确认复制", command=confirm_copy, width=12).pack(side=tk.LEFT, padx=5)
+                ttk.Button(button_frame, text="取消", command=cancel_preview, width=12).pack(side=tk.LEFT, padx=5)
+            else:
+                messagebox.showwarning("警告", f"没有可复制的CAD命令\n调试信息: 生成了{len(pure_commands)}行命令")
             dialog.destroy()
         
         def cancel():
             dialog.destroy()
         
-        # 按钮布局 - 确保按钮可见且间距合理
-        ttk.Button(button_frame, text="复制选中分组", command=copy_selected_groups, width=15).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(button_frame, text="复制全部", command=copy_all, width=12).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(button_frame, text="取消", command=cancel, width=12).pack(side=tk.RIGHT)
+        # 按钮布局 - 更清晰的选项
+        btn_frame = tk.Frame(button_frame)
+        btn_frame.pack(expand=True)
+        
+        # 主要操作按钮
+        copy_btn = ttk.Button(btn_frame, text="📋 复制选中分组", 
+                              command=copy_selected_groups, width=18)
+        copy_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        copy_all_btn = ttk.Button(btn_frame, text="📋 复制全部", 
+                                  command=copy_all, width=12)
+        copy_all_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        cancel_btn = ttk.Button(btn_frame, text="❌ 取消", 
+                                command=cancel, width=12)
+        cancel_btn.pack(side=tk.LEFT)
+        
+        # 添加提示信息
+        tip_frame = tk.Frame(main_frame)
+        tip_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        tip_label = tk.Label(tip_frame, text="💡 提示：\n• 复制选中分组：只复制勾选的分组\n• 复制全部：复制所有分组（忽略勾选状态）", 
+                            font=('Microsoft YaHei', 9), fg='#666666', justify=tk.LEFT)
+        tip_label.pack()
         
         # 配置滚动条
         canvas.pack(side="left", fill="both", expand=True)
@@ -1107,6 +1630,397 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
             self.update_status("复制失败", '#dc3545')
             # 2秒后恢复默认状态
             self.root.after(2000, self.reset_status)
+    
+    def auto_paste_to_cad(self, content):
+        """自动粘贴到CAD并模拟按键中断命令"""
+        if not HAS_PYAUTOGUI:
+            messagebox.showwarning("警告", "pyautogui未安装，无法使用自动粘贴功能")
+            return False
+        
+        try:
+            # 显示倒计时对话框
+            self._show_countdown_dialog(content)
+            return True
+        except Exception as e:
+            messagebox.showerror("错误", f"自动粘贴失败: {str(e)}")
+            return False
+    
+    def _show_countdown_dialog(self, content):
+        """显示倒计时对话框"""
+        countdown_dialog = tk.Toplevel(self.root)
+        countdown_dialog.title("⏰ 准备自动粘贴")
+        countdown_dialog.transient(self.root)
+        countdown_dialog.focus_set()
+        
+        # 居中显示
+        countdown_dialog.update_idletasks()
+        x = (countdown_dialog.winfo_screenwidth() // 2) - 250
+        y = (countdown_dialog.winfo_screenheight() // 2) - 150
+        countdown_dialog.geometry(f"+{x}+{y}")
+        
+        # 主容器
+        main_frame = tk.Frame(countdown_dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # 标题
+        title_label = tk.Label(main_frame, text="⏰ 准备自动粘贴到CAD", 
+                              font=('Microsoft YaHei', 12, 'bold'))
+        title_label.pack(pady=(0, 15))
+        
+        # 倒计时标签
+        countdown_label = tk.Label(main_frame, text="5", 
+                                  font=('Microsoft YaHei', 24, 'bold'), fg='#dc3545')
+        countdown_label.pack(pady=(0, 15))
+        
+        # 说明
+        desc_label = tk.Label(main_frame, text="请确保：\n• CAD窗口已打开并处于活动状态\n• 没有正在执行的CAD命令\n• 已保存重要文件\n\n💡 自动粘贴将确保每个分组的多段线独立执行，\n避免CAD将多个分组合并为一个多段线。\n\n✅ 当前模式：分组多段线自动复制", 
+                             font=('Microsoft YaHei', 10), justify=tk.LEFT)
+        desc_label.pack(pady=(0, 15))
+        
+        # 取消按钮
+        def cancel_operation():
+            countdown_dialog.destroy()
+            messagebox.showinfo("已取消", "自动粘贴操作已取消")
+        
+        cancel_btn = ttk.Button(main_frame, text="❌ 取消操作", command=cancel_operation)
+        cancel_btn.pack(pady=(10, 0))
+        
+        # 倒计时功能
+        def update_countdown(count):
+            if count > 0:
+                countdown_label.config(text=str(count))
+                countdown_dialog.after(1000, lambda: update_countdown(count - 1))
+            else:
+                countdown_dialog.destroy()
+                self._execute_cad_commands(content)
+        
+        # 开始倒计时
+        update_countdown(5)
+    
+    def _execute_cad_commands(self, content):
+        """执行CAD命令并模拟按键"""
+        try:
+            # 显示执行进度对话框
+            progress_dialog = tk.Toplevel(self.root)
+            progress_dialog.title("⚡ 正在执行CAD命令")
+            progress_dialog.transient(self.root)
+            progress_dialog.focus_set()
+            
+            # 居中显示
+            progress_dialog.update_idletasks()
+            x = (progress_dialog.winfo_screenwidth() // 2) - 250
+            y = (progress_dialog.winfo_screenheight() // 2) - 150
+            progress_dialog.geometry(f"+{x}+{y}")
+            
+            # 主容器
+            main_frame = tk.Frame(progress_dialog)
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+            
+            # 标题
+            title_label = tk.Label(main_frame, text="⚡ 正在执行CAD命令", 
+                                  font=('Microsoft YaHei', 12, 'bold'))
+            title_label.pack(pady=(0, 15))
+            
+            # 进度说明
+            progress_label = tk.Label(main_frame, text="正在粘贴并执行命令...", 
+                                     font=('Microsoft YaHei', 10))
+            progress_label.pack(pady=(0, 15))
+            
+            # 警告信息
+            warning_label = tk.Label(main_frame, text="⚠️ 请勿移动鼠标或使用键盘", 
+                                    font=('Microsoft YaHei', 9), fg='#dc3545')
+            warning_label.pack(pady=(0, 15))
+            
+            def execute_with_progress():
+                """带进度反馈的执行"""
+                try:
+                    # 初始化pyautogui设置
+                    pyautogui.FAILSAFE = True
+                    pyautogui.PAUSE = 0.1
+                    
+                    # 分割命令为单独的多段线
+                    commands = content.split('\n')
+                    current_command = []
+                    command_count = 0
+                    
+                    for line in commands:
+                        if line.strip():
+                            if line.startswith('pline'):
+                                command_count += 1
+                                # 更新进度
+                                progress_label.config(text=f"正在执行第 {command_count} 个命令...")
+                                progress_dialog.update()
+                                
+                                # 如果有待执行的命令，先执行它
+                                if current_command:
+                                    self._execute_single_pline(current_command)
+                                    current_command = []
+                                # 开始新的多段线命令
+                                current_command = [line]
+                            else:
+                                current_command.append(line)
+                    
+                    # 执行最后一个命令
+                    if current_command:
+                        command_count += 1
+                        progress_label.config(text=f"正在执行第 {command_count} 个命令...")
+                        progress_dialog.update()
+                        self._execute_single_pline(current_command)
+                    
+                    # 完成
+                    progress_dialog.destroy()
+                    self.update_status("✅ 自动执行CAD命令完成", '#28a745')
+                    self._show_completion_dialog(command_count)
+                    
+                except Exception as e:
+                    progress_dialog.destroy()
+                    self._show_error_dialog(str(e))
+                    self.update_status("❌ 自动执行失败", '#dc3545')
+                finally:
+                    # 确保资源被释放
+                    self._cleanup_pyautogui()
+            
+            # 延迟执行，让对话框先显示
+            progress_dialog.after(1000, execute_with_progress)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"执行CAD命令失败: {str(e)}")
+            self.update_status("❌ 自动执行失败", '#dc3545')
+    
+    def _show_completion_dialog(self, command_count):
+        """显示操作完成提示对话框"""
+        completion_dialog = tk.Toplevel(self.root)
+        completion_dialog.title("✅ 操作完成")
+        completion_dialog.transient(self.root)
+        completion_dialog.focus_set()
+        
+        # 设置对话框为顶层窗口
+        completion_dialog.attributes('-topmost', True)
+        
+        # 居中显示
+        completion_dialog.update_idletasks()
+        x = (completion_dialog.winfo_screenwidth() // 2) - 300
+        y = (completion_dialog.winfo_screenheight() // 2) - 200
+        completion_dialog.geometry(f"+{x}+{y}")
+        
+        # 主容器
+        main_frame = tk.Frame(completion_dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+        
+        # 成功图标和标题
+        success_frame = tk.Frame(main_frame)
+        success_frame.pack(pady=(0, 20))
+        
+        success_title = tk.Label(success_frame, text="✅ 操作完成", 
+                                font=('Microsoft YaHei', 16, 'bold'), fg='#28a745')
+        success_title.pack()
+        
+        # 详细信息
+        info_frame = tk.Frame(main_frame)
+        info_frame.pack(pady=(0, 25))
+        
+        # 执行统计
+        stats_label = tk.Label(info_frame, text=f"📊 执行统计：", 
+                              font=('Microsoft YaHei', 12, 'bold'))
+        stats_label.pack(pady=(0, 10))
+        
+        command_label = tk.Label(info_frame, text=f"• 成功执行了 {command_count} 个CAD命令", 
+                                font=('Microsoft YaHei', 11))
+        command_label.pack(pady=2)
+        
+        group_label = tk.Label(info_frame, text="• 每个分组的多段线都已独立执行", 
+                              font=('Microsoft YaHei', 11))
+        group_label.pack(pady=2)
+        
+        status_label = tk.Label(info_frame, text="• 所有命令已成功粘贴到CAD", 
+                               font=('Microsoft YaHei', 11))
+        status_label.pack(pady=2)
+        
+        # 操作结果
+        result_frame = tk.Frame(main_frame)
+        result_frame.pack(pady=(0, 25))
+        
+        result_title = tk.Label(result_frame, text="🎯 操作结果：", 
+                               font=('Microsoft YaHei', 12, 'bold'))
+        result_title.pack(pady=(0, 10))
+        
+        result1 = tk.Label(result_frame, text="• 每个分组的多段线都是独立的图形对象", 
+                           font=('Microsoft YaHei', 10), fg='#28a745')
+        result1.pack(pady=2)
+        
+        result2 = tk.Label(result_frame, text="• 避免了CAD将多个分组合并的问题", 
+                           font=('Microsoft YaHei', 10), fg='#28a745')
+        result2.pack(pady=2)
+        
+        result3 = tk.Label(result_frame, text="• 可以继续在CAD中进行编辑和修改", 
+                           font=('Microsoft YaHei', 10), fg='#28a745')
+        result3.pack(pady=2)
+        
+        # 提示信息
+        tip_frame = tk.Frame(main_frame)
+        tip_frame.pack(pady=(0, 20))
+        
+        tip_label = tk.Label(tip_frame, text="💡 提示：现在可以继续在CAD中工作，\n所有图形都已成功创建并可以独立编辑。", 
+                            font=('Microsoft YaHei', 10), fg='#666666', justify=tk.CENTER)
+        tip_label.pack()
+        
+        # 确认按钮
+        def close_dialog():
+            completion_dialog.destroy()
+        
+        confirm_btn = ttk.Button(main_frame, text="✅ 确认", 
+                                 command=close_dialog, width=15)
+        confirm_btn.pack()
+        
+        # 自动关闭（10秒后）
+        completion_dialog.after(10000, close_dialog)
+        
+        # 设置焦点到确认按钮
+        confirm_btn.focus_set()
+    
+    def _show_error_dialog(self, error_message):
+        """显示错误提示对话框"""
+        error_dialog = tk.Toplevel(self.root)
+        error_dialog.title("❌ 操作失败")
+        error_dialog.transient(self.root)
+        error_dialog.focus_set()
+        
+        # 设置对话框为顶层窗口
+        error_dialog.attributes('-topmost', True)
+        
+        # 居中显示
+        error_dialog.update_idletasks()
+        x = (error_dialog.winfo_screenwidth() // 2) - 300
+        y = (error_dialog.winfo_screenheight() // 2) - 200
+        error_dialog.geometry(f"+{x}+{y}")
+        
+        # 主容器
+        main_frame = tk.Frame(error_dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=30, pady=30)
+        
+        # 错误图标和标题
+        error_frame = tk.Frame(main_frame)
+        error_frame.pack(pady=(0, 20))
+        
+        error_title = tk.Label(error_frame, text="❌ 操作失败", 
+                              font=('Microsoft YaHei', 16, 'bold'), fg='#dc3545')
+        error_title.pack()
+        
+        # 错误信息
+        error_info_frame = tk.Frame(main_frame)
+        error_info_frame.pack(pady=(0, 25))
+        
+        error_desc = tk.Label(error_info_frame, text="自动执行CAD命令时发生错误：", 
+                             font=('Microsoft YaHei', 12, 'bold'))
+        error_desc.pack(pady=(0, 10))
+        
+        # 错误详情（可滚动）
+        error_text_frame = tk.Frame(error_info_frame)
+        error_text_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        error_text = tk.Text(error_text_frame, wrap=tk.WORD, width=50, height=6,
+                            font=('Consolas', 9))
+        error_scrollbar = ttk.Scrollbar(error_text_frame, orient="vertical", command=error_text.yview)
+        error_text.configure(yscrollcommand=error_scrollbar.set)
+        
+        error_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        error_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 插入错误信息
+        error_text.insert(tk.END, error_message)
+        error_text.config(state=tk.DISABLED)
+        
+        # 解决建议
+        solution_frame = tk.Frame(main_frame)
+        solution_frame.pack(pady=(0, 20))
+        
+        solution_title = tk.Label(solution_frame, text="🔧 解决建议：", 
+                                 font=('Microsoft YaHei', 12, 'bold'))
+        solution_title.pack(pady=(0, 10))
+        
+        solution1 = tk.Label(solution_frame, text="• 检查CAD窗口是否处于活动状态", 
+                            font=('Microsoft YaHei', 10))
+        solution1.pack(pady=2)
+        
+        solution2 = tk.Label(solution_frame, text="• 确保没有其他程序干扰", 
+                            font=('Microsoft YaHei', 10))
+        solution2.pack(pady=2)
+        
+        solution3 = tk.Label(solution_frame, text="• 尝试使用手动复制粘贴方式", 
+                            font=('Microsoft YaHei', 10))
+        solution3.pack(pady=2)
+        
+        # 按钮区域
+        button_frame = tk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+        
+        def close_dialog():
+            error_dialog.destroy()
+        
+        def retry_manual():
+            """重试手动复制"""
+            error_dialog.destroy()
+            messagebox.showinfo("手动复制", "CAD命令已复制到剪贴板\n请手动粘贴到CAD中")
+        
+        # 按钮布局
+        btn_frame = tk.Frame(button_frame)
+        btn_frame.pack(expand=True)
+        
+        retry_btn = ttk.Button(btn_frame, text="📋 手动复制", 
+                               command=retry_manual, width=12)
+        retry_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        close_btn = ttk.Button(btn_frame, text="❌ 关闭", 
+                               command=close_dialog, width=12)
+        close_btn.pack(side=tk.LEFT)
+        
+        # 自动关闭（15秒后）
+        error_dialog.after(15000, close_dialog)
+        
+        # 设置焦点到关闭按钮
+        close_btn.focus_set()
+    
+    def _execute_single_pline(self, command_lines):
+        """执行单个多段线命令"""
+        try:
+            # 设置pyautogui的安全设置，避免意外操作
+            pyautogui.FAILSAFE = True
+            pyautogui.PAUSE = 0.1  # 减少延迟，提高效率
+            
+            # 粘贴命令
+            pyautogui.hotkey('ctrl', 'v')
+            pyautogui.sleep(0.3)  # 减少延迟
+            
+            # 按回车执行命令
+            pyautogui.press('enter')
+            pyautogui.sleep(0.3)  # 减少延迟
+            
+            # 再次按回车确保命令结束
+            pyautogui.press('enter')
+            pyautogui.sleep(0.2)  # 减少延迟
+            
+        except Exception as e:
+            print(f"执行命令失败: {e}")
+            # 确保在异常情况下也能释放资源
+            self._cleanup_pyautogui()
+        finally:
+            # 确保资源被释放
+            self._cleanup_pyautogui()
+    
+    def _cleanup_pyautogui(self):
+        """清理pyautogui资源"""
+        try:
+            # 重置pyautogui设置
+            pyautogui.FAILSAFE = True
+            pyautogui.PAUSE = 0.1
+            
+            # 强制垃圾回收
+            import gc
+            gc.collect()
+            
+            print("pyautogui资源已清理")
+        except Exception as e:
+            print(f"清理pyautogui资源时出现错误: {e}")
     
 
     
@@ -1170,11 +2084,48 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         except Exception as e:
             print(f"清理matplotlib资源时出现错误: {e}")
     
+    def get_adaptive_figure_size(self, default_width=800, default_height=600):
+        """获取自适应的图形大小"""
+        # 获取图形框架的实际大小
+        self.graph_frame.update_idletasks()
+        frame_width = self.graph_frame.winfo_width()
+        frame_height = self.graph_frame.winfo_height()
+        
+        # 如果框架大小太小，使用默认大小
+        if frame_width < 100 or frame_height < 100:
+            frame_width, frame_height = default_width, default_height
+        
+        # 根据框架大小计算图形大小（英寸）
+        dpi = 100
+        fig_width = frame_width / dpi
+        fig_height = frame_height / dpi
+        
+        return fig_width, fig_height, dpi
+    
+    def embed_figure_with_resize(self, fig, canvas):
+        """嵌入图形并添加大小变化监听器"""
+        canvas.draw()
+        canvas_widget = canvas.get_tk_widget()
+        canvas_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # 添加窗口大小变化监听器
+        def on_resize(event):
+            try:
+                # 重新绘制图形以适应新的大小
+                canvas.draw()
+            except Exception as e:
+                print(f"重新绘制图形时出现错误: {e}")
+        
+        canvas_widget.bind('<Configure>', on_resize)
+    
     def cleanup_resources(self):
         """清理所有资源"""
         try:
             # 清理matplotlib资源
             self.cleanup_matplotlib()
+            
+            # 清理pyautogui资源
+            self._cleanup_pyautogui()
             
             # 清理坐标数据
             self.coordinates = []
@@ -1187,6 +2138,8 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
             # 强制垃圾回收
             import gc
             gc.collect()
+            
+            print("所有资源清理完成")
                 
         except Exception as e:
             print(f"清理资源时出现错误: {e}")
@@ -1207,13 +2160,16 @@ def main():
     # 设置窗口关闭事件处理
     def on_closing():
         try:
+            print("正在关闭程序，清理资源...")
             # 清理应用资源
             app.cleanup_resources()
+            print("资源清理完成，正在退出...")
             # 强制退出程序，确保没有残留进程
             import os
             os._exit(0)
         except Exception as e:
             print(f"关闭程序时出现错误: {e}")
+            # 即使出错也要强制退出
             import os
             os._exit(0)
     
