@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 CAD坐标转换器
-版本: 1.0.0
+版本: 1.1.0
 作者: ViVi141
 邮箱: 747384120@qq.com
 描述: 将TXT格式的坐标数据转换为CAD图形绘制命令的桌面GUI程序
@@ -24,7 +24,7 @@ except ImportError:
     print("警告：pyautogui未安装，无法使用自动按键功能")
 
 # 版本信息
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 AUTHOR = "ViVi141"
 EMAIL = "747384120@qq.com"
 
@@ -375,12 +375,6 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
 • 手动复制：直接复制到剪贴板，适合单个分组
 • 自动复制：模拟键盘操作，确保多个分组独立执行
 
-自动复制使用条件:
-• 转换类型必须为"多段线(pline)"
-• 必须启用分组处理
-• 必须有多个分组
-• 仅在满足以上条件时才能使用自动复制功能
-
 作者: {AUTHOR} ({EMAIL})
         """
         messagebox.showinfo("快捷键帮助", help_text)
@@ -528,11 +522,8 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         # 清理旧的图形
         self.cleanup_matplotlib()
         
-        # 获取自适应的图形大小
-        fig_width, fig_height, dpi = self.get_adaptive_figure_size(800, 600)
-        
         # 创建图形并设置中文字体
-        fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=dpi)
+        fig, ax = plt.subplots(figsize=(10, 7))
         
         # 设置中文字体
         plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
@@ -599,7 +590,8 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         
         # 嵌入到tkinter窗口
         canvas = FigureCanvasTkAgg(fig, self.graph_frame)
-        self.embed_figure_with_resize(fig, canvas)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
     
 
     
@@ -608,22 +600,8 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         # 清理旧的图形
         self.cleanup_matplotlib()
         
-        # 获取图形框架的实际大小
-        self.graph_frame.update_idletasks()
-        frame_width = self.graph_frame.winfo_width()
-        frame_height = self.graph_frame.winfo_height()
-        
-        # 如果框架大小太小，使用默认大小
-        if frame_width < 100 or frame_height < 100:
-            frame_width, frame_height = 1000, 700
-        
-        # 根据框架大小计算图形大小（英寸）
-        dpi = 100
-        fig_width = frame_width / dpi
-        fig_height = frame_height / dpi
-        
         # 创建3D图形
-        fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
+        fig = plt.figure(figsize=(12, 8))
         ax = fig.add_subplot(111, projection='3d')
         
         # 设置中文字体
@@ -686,22 +664,8 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         # 清理旧的图形
         self.cleanup_matplotlib()
         
-        # 获取图形框架的实际大小
-        self.graph_frame.update_idletasks()
-        frame_width = self.graph_frame.winfo_width()
-        frame_height = self.graph_frame.winfo_height()
-        
-        # 如果框架大小太小，使用默认大小
-        if frame_width < 100 or frame_height < 100:
-            frame_width, frame_height = 900, 700
-        
-        # 根据框架大小计算图形大小（英寸）
-        dpi = 100
-        fig_width = frame_width / dpi
-        fig_height = frame_height / dpi
-        
         # 创建图形并设置中文字体
-        fig, ax = plt.subplots(figsize=(fig_width, fig_height), dpi=dpi)
+        fig, ax = plt.subplots(figsize=(12, 8))
         
         # 设置中文字体
         plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'DejaVu Sans']
@@ -797,22 +761,8 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         # 清理旧的图形
         self.cleanup_matplotlib()
         
-        # 获取图形框架的实际大小
-        self.graph_frame.update_idletasks()
-        frame_width = self.graph_frame.winfo_width()
-        frame_height = self.graph_frame.winfo_height()
-        
-        # 如果框架大小太小，使用默认大小
-        if frame_width < 100 or frame_height < 100:
-            frame_width, frame_height = 1100, 800
-        
-        # 根据框架大小计算图形大小（英寸）
-        dpi = 100
-        fig_width = frame_width / dpi
-        fig_height = frame_height / dpi
-        
         # 创建3D图形
-        fig = plt.figure(figsize=(fig_width, fig_height), dpi=dpi)
+        fig = plt.figure(figsize=(14, 10))
         ax = fig.add_subplot(111, projection='3d')
         
         # 设置中文字体
@@ -1009,21 +959,6 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
             messagebox.showwarning("警告", "没有可复制的内容\n请先转换坐标数据")
             return
         
-        # 检查是否满足使用自动复制的条件
-        convert_type = self.convert_type.get()
-        has_multiple_groups = (len(self.coordinate_groups) > 1 and 
-                              any(len(coords) > 0 for coords in self.coordinate_groups.values()))
-        
-        # 只有在分组且多段线时才允许使用自动复制
-        if not (convert_type == "pline" and has_multiple_groups):
-            messagebox.showinfo("提示", 
-                "自动复制功能仅在以下条件下可用：\n"
-                "• 转换类型为'多段线(pline)'\n"
-                "• 启用了分组处理\n"
-                "• 有多个分组\n\n"
-                "当前条件不满足，建议使用普通复制功能。")
-            return
-        
         # 如果没有分组数据但有普通坐标数据，先转换
         if not self.coordinate_groups and self.coordinates:
             print("调试信息 - 将普通坐标数据转换为分组格式")
@@ -1102,7 +1037,7 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         tip_frame = tk.Frame(main_frame)
         tip_frame.pack(fill=tk.X, pady=(15, 0))
         
-        tip_label = tk.Label(tip_frame, text="💡 提示：\n• 复制所有分组：直接复制所有数据\n• 选择特定分组：可以选择部分分组\n• 复制并预览：先查看内容再复制\n\n⚠️ 注意：由于CAD命令限制，多个分组的多段线可能会被合并。\n建议使用自动粘贴功能来确保每个分组独立执行。\n\n✅ 当前满足自动复制条件：分组多段线模式", 
+        tip_label = tk.Label(tip_frame, text="💡 提示：\n• 复制所有分组：直接复制所有数据\n• 选择特定分组：可以选择部分分组\n• 复制并预览：先查看内容再复制\n\n⚠️ 注意：由于CAD命令限制，多个分组的多段线可能会被合并。\n建议使用自动粘贴功能来确保每个分组独立执行。", 
                             font=('Microsoft YaHei', 9), fg='#666666', justify=tk.LEFT)
         tip_label.pack()
     
@@ -1189,12 +1124,6 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         
         # 插入详细说明
         warning_text = """🚨 重要警告：
-
-✅ 使用条件确认：
-• 转换类型：多段线(pline) ✓
-• 分组处理：已启用 ✓
-• 分组数量：多个分组 ✓
-• 满足自动复制使用条件
 
 ⚠️ 为什么需要模拟键盘操作？
 • 由于CAD的命令行限制，无法一次性执行多个分组的多段线命令
@@ -1673,7 +1602,7 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         countdown_label.pack(pady=(0, 15))
         
         # 说明
-        desc_label = tk.Label(main_frame, text="请确保：\n• CAD窗口已打开并处于活动状态\n• 没有正在执行的CAD命令\n• 已保存重要文件\n\n💡 自动粘贴将确保每个分组的多段线独立执行，\n避免CAD将多个分组合并为一个多段线。\n\n✅ 当前模式：分组多段线自动复制", 
+        desc_label = tk.Label(main_frame, text="请确保：\n• CAD窗口已打开并处于活动状态\n• 没有正在执行的CAD命令\n• 已保存重要文件\n\n💡 自动粘贴将确保每个分组的多段线独立执行，\n避免CAD将多个分组合并为一个多段线。", 
                              font=('Microsoft YaHei', 10), justify=tk.LEFT)
         desc_label.pack(pady=(0, 15))
         
@@ -2083,40 +2012,6 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
                 gc.collect()
         except Exception as e:
             print(f"清理matplotlib资源时出现错误: {e}")
-    
-    def get_adaptive_figure_size(self, default_width=800, default_height=600):
-        """获取自适应的图形大小"""
-        # 获取图形框架的实际大小
-        self.graph_frame.update_idletasks()
-        frame_width = self.graph_frame.winfo_width()
-        frame_height = self.graph_frame.winfo_height()
-        
-        # 如果框架大小太小，使用默认大小
-        if frame_width < 100 or frame_height < 100:
-            frame_width, frame_height = default_width, default_height
-        
-        # 根据框架大小计算图形大小（英寸）
-        dpi = 100
-        fig_width = frame_width / dpi
-        fig_height = frame_height / dpi
-        
-        return fig_width, fig_height, dpi
-    
-    def embed_figure_with_resize(self, fig, canvas):
-        """嵌入图形并添加大小变化监听器"""
-        canvas.draw()
-        canvas_widget = canvas.get_tk_widget()
-        canvas_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        # 添加窗口大小变化监听器
-        def on_resize(event):
-            try:
-                # 重新绘制图形以适应新的大小
-                canvas.draw()
-            except Exception as e:
-                print(f"重新绘制图形时出现错误: {e}")
-        
-        canvas_widget.bind('<Configure>', on_resize)
     
     def cleanup_resources(self):
         """清理所有资源"""
