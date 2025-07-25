@@ -1,15 +1,33 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-
 block_cipher = None
-
 
 a = Analysis(
     ['CAD坐标转换器.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[
+        ('favicon.ico', '.'),
+        ('CAD坐标转换器使用手册(非技术人员版).md', '.'),
+        ('CAD坐标转换器使用手册(非技术人员版).pdf', '.'),
+        ('README.md', '.'),
+        ('LICENSE', '.'),
+    ],
+    hiddenimports=[
+        'matplotlib',
+        'matplotlib.pyplot',
+        'matplotlib.backends.backend_tkagg',
+        'numpy',
+        'pyautogui',
+        'PIL',
+        'PIL.Image',
+        'PIL.ImageTk',
+        'tkinter',
+        'tkinter.ttk',
+        'tkinter.filedialog',
+        'tkinter.messagebox',
+        'tkinter.scrolledtext',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -19,6 +37,7 @@ a = Analysis(
     cipher=block_cipher,
     noarchive=False,
 )
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
@@ -41,5 +60,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['favicon.ico'],
+    icon='favicon.ico',
+    version_file=None,
 )
