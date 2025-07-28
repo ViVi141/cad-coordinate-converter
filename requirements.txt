@@ -1,16 +1,11 @@
 # CAD坐标转换器依赖包
-# 版本: 1.1.0
-# 作者: ViVi141 (747384120@qq.com)
-# Python版本: 3.7.9 (虚拟环境)
+# 核心功能依赖
+matplotlib>=3.3.0
+numpy>=1.19.0
+chardet>=4.0.0
 
-# 图形绘制库
-matplotlib>=3.3.0,<3.6.0
+# 图形界面依赖（Python内置，无需安装）
+# tkinter - Python内置GUI库
 
-# 数值计算库
-numpy>=1.19.0,<1.22.0
-
-# 自动化控制库
-pyautogui>=0.9.53
-pillow>=8.0.0
-mouseinfo>=0.1.3
-pygetwindow>=0.0.9 
+# 可选依赖（用于图形预览）
+# pillow>=8.0.0  # 图像处理库，matplotlib可能需要 
