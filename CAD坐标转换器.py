@@ -269,8 +269,8 @@ class CAD坐标转换器:
         groups = {}  # 存储分组坐标数据
         current_group = "默认组"
         
-        # 编译正则表达式以提高性能
-        coord_pattern = re.compile(r'(\d+\.?\d*)\s*,\s*(\d+\.?\d*)\s*,?\s*(\d+\.?\d*)?')
+        # 编译正则表达式以提高性能 - 支持科学计数法，更严格的匹配
+        coord_pattern = re.compile(r'^\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*,\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*,?\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)?\s*$')
         
         lines = content.split('\n')
         
@@ -287,12 +287,17 @@ class CAD坐标转换器:
                 continue
                 
             # 匹配坐标格式: x, y, z (可选)
-            matches = coord_pattern.findall(line)
-            
-            for match in matches:
+            match = coord_pattern.match(line)
+            if match:
                 try:
-                    x, y, z = match[0], match[1], match[2] if match[2] else "0"
+                    x, y, z = match.group(1), match.group(2), match.group(3) if match.group(3) else "0"
                     coord = (float(x), float(y), float(z))
+                    
+                    # 验证坐标值的合理性
+                    if abs(coord[0]) > 1e10 or abs(coord[1]) > 1e10 or abs(coord[2]) > 1e10:
+                        print(f"警告：跳过异常坐标值: {coord}")
+                        continue
+                        
                     coordinates.append(coord)
                     
                     # 同时添加到分组中
@@ -301,6 +306,7 @@ class CAD坐标转换器:
                     groups[current_group].append(coord)
                 except ValueError:
                     # 跳过无效的坐标数据
+                    print(f"警告：跳过无效坐标: {line}")
                     continue
         
         # 存储分组数据
@@ -361,7 +367,7 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         """
         messagebox.showinfo("快捷键帮助", help_text)
     
-    def generate_cad_commands(self, coordinates):
+    def generate_cad_commands(self, coordinates, is_grouped=False):
         """生成CAD命令"""
         commands = []
         
@@ -375,21 +381,51 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
         # 检查是否包含Z坐标
         has_z_coords = any(len(coord) > 2 and coord[2] != 0 for coord in coordinates)
         
+        # 添加CAD命令说明
+        commands.append(f"# CAD命令 - {convert_type.upper()} 格式")
+        commands.append(f"# 共{len(coordinates)}个坐标点")
+        if has_z_coords:
+            commands.append("# 包含Z坐标 (3D)")
+        else:
+            commands.append("# 仅X,Y坐标 (2D)")
+        commands.append("")
+        
         if convert_type == "pline":
-            # 生成多段线命令
+            # 生成多段线命令 - 改进格式
             if has_z_coords:
-                coords_str = " ".join([f"{x},{y},{z}" for x, y, z in coordinates])
+                # 3D多段线
+                commands.append("pline")
+                for x, y, z in coordinates:
+                    commands.append(f"{x},{y},{z}")
+                # 添加闭合选项（可选）
+                if len(coordinates) > 2:
+                    commands.append("C")  # 使用C终止多段线
+                else:
+                    commands.append("C^")  # 使用C^终止多段线
             else:
-                coords_str = " ".join([f"{x},{y}" for x, y, z in coordinates])
-            commands.append(f"pline {coords_str}")
+                # 2D多段线
+                commands.append("pline")
+                for x, y, z in coordinates:
+                    commands.append(f"{x},{y}")
+                # 添加闭合选项（可选）
+                if len(coordinates) > 2:
+                    commands.append("C")  # 使用C终止多段线
+                else:
+                    commands.append("C^")  # 使用C^终止多段线
             
         elif convert_type == "line":
-            # 生成直线命令 - 每个坐标点单独生成 line 命令
-            for x, y, z in coordinates:
+            # 生成直线命令 - 连接相邻点形成线段
+            # 如果是分组模式，确保每个组内的线段是独立的
+            for i in range(len(coordinates) - 1):
+                x1, y1, z1 = coordinates[i]
+                x2, y2, z2 = coordinates[i+1]
                 if has_z_coords:
-                    commands.append(f"line {x},{y},{z}")
+                    commands.append(f"line {x1},{y1},{z1} {x2},{y2},{z2}")
                 else:
-                    commands.append(f"line {x},{y}")
+                    commands.append(f"line {x1},{y1} {x2},{y2}")
+            # 添加空行结束line命令组
+            if len(coordinates) > 1:
+                commands.append("")
                 
         elif convert_type == "point":
             # 生成点命令
@@ -398,20 +434,27 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
                     commands.append(f"point {x},{y},{z}")
                 else:
                     commands.append(f"point {x},{y}")
+            # 添加空行结束point命令组
+            if coordinates:
+                commands.append("")
         
         # 添加文字标注
         if add_text:
             commands.append("")  # 空行分隔
+            commands.append("# 文字标注")
             for i, (x, y, z) in enumerate(coordinates, 1):
                 if has_z_coords:
-                    commands.append(f'-text j ml {x},{y},{z} "" {text_height} 0 A 点{i}')
+                    commands.append(f'text j ml {x},{y},{z} {text_height} 0 "点{i}"')
                 else:
-                    commands.append(f'-text j ml {x},{y} "" {text_height} 0 A 点{i}')
+                    commands.append(f'text j ml {x},{y} {text_height} 0 "点{i}"')
+            # 添加空行结束text命令组
+            if coordinates:
+                commands.append("")
         
         return "\n".join(commands)
     
     def generate_grouped_cad_commands(self, groups):
-        """按分组生成CAD命令"""
+        """按分组生成CAD命令 - 确保每个组都是独立的闭合图形"""
         commands = []
         
         for group_name, coordinates in groups.items():
@@ -422,8 +465,8 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
             commands.append(f"# 共{len(coordinates)}个坐标点")
             commands.append("")
             
-            # 生成该组的CAD命令
-            group_commands = self.generate_cad_commands(coordinates)
+            # 生成该组的CAD命令 - 传入is_grouped=True表示这是分组模式
+            group_commands = self.generate_cad_commands(coordinates, is_grouped=True)
             commands.append(group_commands)
             commands.append("")  # 空行分隔
         
@@ -845,31 +888,113 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
                     f"文件大小({file_size/1024/1024:.1f}MB)较大，处理可能需要较长时间。\n是否继续？"):
                     return
             
+            # 改进的文件读取方式 - 流式处理
+            coordinates = []
+            groups = {}
+            current_group = "默认组"
+            line_count = 0
+            valid_coords = 0
+            
+            # 编译正则表达式
+            coord_pattern = re.compile(r'^\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*,\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)\s*,?\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)?\s*$')
+            
             with open(self.file_path_var.get(), 'r', encoding='utf-8') as f:
-                content = f.read()
+                for line in f:
+                    line_count += 1
+                    line = line.strip()
+                    
+                    # 每处理1000行更新一次状态
+                    if line_count % 1000 == 0:
+                        self.update_status(f"正在解析坐标数据... (已处理{line_count}行，找到{valid_coords}个有效坐标)", '#007bff')
+                        self.root.update()
+                    
+                    if not line or line.startswith('#'):
+                        continue
+                    
+                    # 检查是否是分组标识
+                    if line.startswith('第') and '组' in line:
+                        current_group = line
+                        if current_group not in groups:
+                            groups[current_group] = []
+                        continue
+                    
+                    # 匹配坐标格式
+                    match = coord_pattern.match(line)
+                    if match:
+                        try:
+                            x, y, z = match.group(1), match.group(2), match.group(3) if match.group(3) else "0"
+                            coord = (float(x), float(y), float(z))
+                            
+                            # 验证坐标值的合理性
+                            if abs(coord[0]) > 1e10 or abs(coord[1]) > 1e10 or abs(coord[2]) > 1e10:
+                                continue
+                            
+                            # 检查是否启用分组处理
+                            if self.group_processing_var.get() and len(groups) > 1:
+                                # 分组模式：只添加到分组中，不添加到合并列表
+                                if current_group not in groups:
+                                    groups[current_group] = []
+                                groups[current_group].append(coord)
+                                valid_coords += 1
+                            else:
+                                # 非分组模式：添加到合并列表和分组中
+                                coordinates.append(coord)
+                                if current_group not in groups:
+                                    groups[current_group] = []
+                                groups[current_group].append(coord)
+                                valid_coords += 1
+                        except ValueError:
+                            continue
             
-            self.update_status("正在解析坐标数据...", '#007bff')
-            self.root.update()  # 强制更新界面
-            self.coordinates = self.parse_coordinates(content)
+            self.coordinates = coordinates
+            self.coordinate_groups = groups
             
-            if not self.coordinates:
-                messagebox.showwarning("警告", "文件中未找到有效的坐标数据")
+            # 提供详细的解析结果反馈
+            if valid_coords == 0:
+                messagebox.showwarning("警告", "文件中未找到有效的坐标数据\n请检查文件格式是否正确")
                 self.update_status("就绪", '#6c757d')
                 return
+            elif valid_coords < len(coordinates):
+                messagebox.showinfo("信息", f"解析完成：共处理{line_count}行，找到{valid_coords}个有效坐标点")
             
-            # 添加坐标数量检查
-            if len(self.coordinates) > 10000:
-                if not messagebox.askyesno("坐标数量过多", 
-                    f"检测到{len(self.coordinates)}个坐标点，处理可能需要较长时间。\n是否继续？"):
+            self.update_status(f"解析完成：共{valid_coords}个有效坐标点", '#28a745')
+            
+            # 检查是否启用分组处理
+            if self.group_processing_var.get() and len(self.coordinate_groups) > 1:
+                # 分组模式：检查分组数据
+                total_group_coords = sum(len(coords) for coords in self.coordinate_groups.values())
+                if total_group_coords == 0:
+                    messagebox.showwarning("警告", "文件中未找到有效的坐标数据")
+                    self.update_status("就绪", '#6c757d')
                     return
+                
+                # 添加坐标数量检查
+                if total_group_coords > 10000:
+                    if not messagebox.askyesno("坐标数量过多", 
+                        f"检测到{total_group_coords}个坐标点，处理可能需要较长时间。\n是否继续？"):
+                        return
+            else:
+                # 非分组模式：检查合并的coordinates
+                if not self.coordinates:
+                    messagebox.showwarning("警告", "文件中未找到有效的坐标数据")
+                    self.update_status("就绪", '#6c757d')
+                    return
+                
+                # 添加坐标数量检查
+                if len(self.coordinates) > 10000:
+                    if not messagebox.askyesno("坐标数量过多", 
+                        f"检测到{len(self.coordinates)}个坐标点，处理可能需要较长时间。\n是否继续？"):
+                        return
             
             self.update_status("正在生成CAD命令...", '#007bff')
             self.root.update()  # 强制更新界面
             
             # 根据用户选择决定是否按分组处理
             if self.group_processing_var.get() and len(self.coordinate_groups) > 1:
+                # 分组处理 - 使用分组数据，不使用合并的coordinates
                 cad_commands = self.generate_grouped_cad_commands(self.coordinate_groups)
             else:
+                # 非分组处理 - 使用合并的coordinates
                 cad_commands = self.generate_cad_commands(self.coordinates)
             
             # 检查Z坐标并更新状态
@@ -1167,8 +1292,20 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
                 # 强制垃圾回收
                 import gc
                 gc.collect()
+                
+                # 记录清理成功
+                print("matplotlib资源已清理")
         except Exception as e:
-            print(f"清理matplotlib资源时出现错误: {e}")
+            # 改进异常处理
+            error_msg = f"清理matplotlib资源时出现错误: {e}"
+            print(error_msg)
+            # 尝试强制清理
+            try:
+                import gc
+                gc.collect()
+                print("已尝试强制垃圾回收")
+            except:
+                pass
     
     def cleanup_resources(self):
         """清理所有资源"""
