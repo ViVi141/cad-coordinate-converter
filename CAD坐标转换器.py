@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 CAD坐标转换器
-版本: 1.0.0
+版本: 1.4.0
 作者: ViVi141
 邮箱: 747384120@qq.com
 描述: 将TXT格式的坐标数据转换为CAD图形绘制命令的桌面GUI程序
@@ -16,7 +16,7 @@ import sys
 import platform
 
 # 版本信息
-VERSION = "1.0.0"
+VERSION = "1.4.0"
 AUTHOR = "ViVi141"
 EMAIL = "747384120@qq.com"
 
