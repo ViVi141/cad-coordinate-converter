@@ -14,6 +14,8 @@ import re
 import os
 import sys
 import platform
+import matplotlib.pyplot as plt
+import numpy as np
 
 # 版本信息
 VERSION = "1.4.0"
