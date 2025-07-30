@@ -155,19 +155,21 @@ class CAD坐标转换器:
         advanced_label = tk.Label(options_frame, text="高级设置:", font=('Microsoft YaHei', 9, 'bold'), bg='white')
         advanced_label.pack(anchor=tk.W, pady=(15, 5))
         
-        self.add_text_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(options_frame, text="添加文字标注", 
-                       variable=self.add_text_var).pack(anchor=tk.W, pady=2)
+        # 暂时禁用文字标注功能
+        # self.add_text_var = tk.BooleanVar(value=False)
+        # ttk.Checkbutton(options_frame, text="添加文字标注", 
+        #                variable=self.add_text_var).pack(anchor=tk.W, pady=2)
         
-        text_height_frame = tk.Frame(options_frame, bg='white')
-        text_height_frame.pack(fill=tk.X, pady=(5, 0))
-        
-        tk.Label(text_height_frame, text="文字高度:", bg='white').pack(side=tk.LEFT)
-        self.text_height_var = tk.StringVar(value="5")
-        ttk.Entry(text_height_frame, textvariable=self.text_height_var, width=8).pack(side=tk.LEFT, padx=(5, 0))
+        # 暂时禁用文字高度设置
+        # text_height_frame = tk.Frame(options_frame, bg='white')
+        # text_height_frame.pack(fill=tk.X, pady=(5, 0))
+        # 
+        # tk.Label(text_height_frame, text="文字高度:", bg='white').pack(side=tk.LEFT)
+        # self.text_height_var = tk.StringVar(value="5")
+        # ttk.Entry(text_height_frame, textvariable=self.text_height_var, width=8).pack(side=tk.LEFT, padx=(5, 0))
         
         # 分组处理选项
-        self.group_processing_var = tk.BooleanVar(value=False)
+        self.group_processing_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(options_frame, text="按分组分别处理", 
                        variable=self.group_processing_var).pack(anchor=tk.W, pady=(5, 0))
         
@@ -349,10 +351,9 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
 使用说明:
 1. 选择包含坐标数据的TXT文件
 2. 选择转换类型（pline/line/point）
-3. 设置是否添加文字标注
-4. 选择是否按分组分别处理（可选）
-5. 点击"转换坐标"或按Ctrl+Enter
-6. 复制生成的CAD命令到CAD软件中使用
+3. 选择是否按分组分别处理（可选）
+4. 点击"转换坐标"或按Ctrl+Enter
+5. 复制生成的CAD命令到CAD软件中使用
 
 支持格式:
 - X,Y 坐标: 447677.9778, 2491585.3947
@@ -375,8 +376,9 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
             return "未找到有效的坐标数据"
         
         convert_type = self.convert_type.get()
-        add_text = self.add_text_var.get()
-        text_height = self.text_height_var.get()
+        # 暂时禁用文字标注功能
+        # add_text = self.add_text_var.get()
+        # text_height = self.text_height_var.get()
         
         # 检查是否包含Z坐标
         has_z_coords = any(len(coord) > 2 and coord[2] != 0 for coord in coordinates)
@@ -438,18 +440,19 @@ CAD坐标转换器 v{VERSION} - 快捷键说明
             if coordinates:
                 commands.append("")
         
-        # 添加文字标注
-        if add_text:
-            commands.append("")  # 空行分隔
-            commands.append("# 文字标注")
-            for i, (x, y, z) in enumerate(coordinates, 1):
-                if has_z_coords:
-                    commands.append(f'text j ml {x},{y},{z} {text_height} 0 "点{i}"')
-                else:
-                    commands.append(f'text j ml {x},{y} {text_height} 0 "点{i}"')
-            # 添加空行结束text命令组
-            if coordinates:
-                commands.append("")
+        # 暂时禁用文字标注功能
+        # # 添加文字标注
+        # if add_text:
+        #     commands.append("")  # 空行分隔
+        #     commands.append("# 文字标注")
+        #     for i, (x, y, z) in enumerate(coordinates, 1):
+        #         if has_z_coords:
+        #             commands.append(f'text j ml {x},{y},{z} {text_height} 0 "点{i}"')
+        #         else:
+        #             commands.append(f'text j ml {x},{y} {text_height} 0 "点{i}"')
+        #     # 添加空行结束text命令组
+        #     if coordinates:
+        #         commands.append("")
         
         return "\n".join(commands)
     
